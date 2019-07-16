@@ -1,0 +1,129 @@
+// OneWire DS18B20 Temperature Switch on ATtiny85
+//
+// Check temperature every second.
+// Fan turned on when hot, off when cool.
+// http://www.nerdkits.com/forum/thread/2849/
+ 
+// fan switch temperatures in Fahrenheit
+#define Umin 5.00 // V
+#define Umax 12.00 // V
+#define Tmin 30.00 // C°
+#define Tmax 31.00 // C°
+#define FTstart 1000 // msec
+ 
+#include <OneWire.h> 
+#include <SoftwareSerial.h>
+ 
+// pins
+#define SERIAL_RX 0
+#define SERIAL_TX 1
+#define ONEWIRE_BUSS 2
+#define STATUS_LED  3
+#define FAN 5
+ 
+//SoftwareSerial Serial(SERIAL_RX, SERIAL_TX); // RX, TX
+ 
+OneWire TemperatureSensor(ONEWIRE_BUSS);  // Dallas one wire data buss pin, a 4.7K resistor pullup is needed
+ 
+void blink(void){
+    digitalWrite(STATUS_LED,HIGH);
+    delay (250);
+    digitalWrite(STATUS_LED,LOW);
+    delay (175);
+}
+ 
+void setup(void) {
+    pinMode(STATUS_LED, OUTPUT);
+    pinMode(FAN, OUTPUT);
+    Serial.begin(9600);
+    Serial.println(F("DS18x20 Temperature Switch"));
+    blink();
+    blink();
+}
+ 
+void loop(void) {
+    byte i;
+    byte data[12];
+    int16_t raw;
+    float celsius, fahrenheit;
+ 
+    TemperatureSensor.reset();       // reset one wire buss
+    TemperatureSensor.skip();        // select only device
+    TemperatureSensor.write(0x44);   // start conversion
+ 
+    delay(1000);                     // wait for the conversion
+ 
+    TemperatureSensor.reset();
+    TemperatureSensor.skip();
+    TemperatureSensor.write(0xBE);   // Read Scratchpad
+    for ( i = 0; i < 9; i++) {       // 9 bytes
+      data[i] = TemperatureSensor.read();
+    }
+ 
+    // Convert the data to actual temperature
+    raw = (data[1] << 8) | data[0];
+    celsius = (float)raw / 16.0;
+    fahrenheit = celsius * 1.8 + 32.0;
+    Serial.print(celsius);
+ 
+    // Turn Fan on/off depending on temperature
+//    if(celsius > Tmax){
+//      digitalWrite(FAN,HIGH);  // on
+//    }
+ 
+//    if(celsius < Tmin){
+//      digitalWrite(FAN,LOW);   // off
+//    }
+
+
+    analogWrite(FAN, ((Umax - Umin) / (Tmax - Tmin)) * (celsius - Tmin) + Umin);
+
+
+    digitalWrite(STATUS_LED,digitalRead(FAN));  // copy fan state to status led
+ 
+    if(digitalRead(FAN)==LOW){
+      Serial.println(F(" [OFF]"));
+    } 
+    else {
+      Serial.println(F(" [ON]"));
+    }
+ 
+}
+=====================
+На старте контроллер запускает вентилятор на полную и медленно снижает напряжение на выходе до 5 вольт, что контролируется с помощью аналогового входа ADC2. Это сделано для более точного получения напряжения 5 Вольт, т.к. параметры используемых элементов могут сильно отличаться. Далее начинам измерять температуру. Если она ниже нижнего порога 36 градусов - останавливаем вентилятор. Как только температура доберётся до 36 градусов - на одну секунду подаём 12 Вольт на вентилятор, чтобы он гарантировано стартовал, а потом уменьшаем до напряжения высчитанного по формуле:
+
+U = ((Umax - Umin) / (Tmax - Tmin)) * (T - Tmin) + Umin
+
+
+где: Umin = 5В, Umax = 12В, Tmin = 36°, Tmax = 66°, T = текущая измеренная температура.
+
+Должна иметь 2 датчика считывания и 2 управления pwm.
+Переменные указывать вначале, так же указывать задержку выключения вентилятора максимальных оборотов.
+Например так:
+#define Umin 5 // V
+#define Umax 12 // V
+#define Tmin 30 // C°
+#define Tmax 31 // C°
+#define FTstart 1000 // msec
+===============
+http://hardlock.org.ua/viewtopic.php?f=9&t=12&sid=70e0bb07e69003b21ed40074594aee02
+------------
+https://www.barnesian.com/arduino-powered-smart-fan-controller/
+-------------
+http://arrduinolab.blogspot.ru/2014/10/5-ds18b20.html
+--------------
+https://openenergymonitor.org/emon/buildingblocks/DS18B20-temperature-sensing
+-------------
+http://hardlock.org.ua/viewtopic.php?f=9&t=12
+==================
+#define Umin 5 // V
+#define Umax 12 // V
+#define Tmin 20 // C°
+#define Tmax 50 // C°
+-----
+U = ((Umax - Umin) / (Tmax - Tmin)) * (T - Tmin) + Umin
+------
+((12 - 5) / (50 - 20)) * (43 - 20) + 5
+--
+((12 - 5) / (50 - 20)) = 0,2333333333333333
+--
